@@ -106,29 +106,74 @@ internal static class SettingsPage
                 ArchiveInfo info = archives[i];
                 section.AddCustom(
                     "archive." + i,
-                    T(info.FileName),
+                    T(""),
                     host => ArchiveRow(host, info),
-                    T(ImportService.Describe(info)),
+                    T(""),
                     null);
             }
         });
     }
 
-    /// <summary>One archive row: both import buttons side by side.</summary>
+    /// <summary>
+    /// One archive row. RitsuLib's AddCustom renders only the control we return, so the
+    /// file name and metadata are drawn here instead of relying on the row template.
+    /// </summary>
     private static Control ArchiveRow(IModSettingsUiActionHost host, ArchiveInfo info)
     {
-        HBoxContainer box = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
-        box.AddThemeConstantOverride("separation", 10);
+        HBoxContainer row = new HBoxContainer
+        {
+            CustomMinimumSize = new Vector2(0f, 72f),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        row.AddThemeConstantOverride("separation", 12);
 
-        Button normal = new Button { Text = "导入", CustomMinimumSize = new Vector2(88f, 44f) };
+        VBoxContainer texts = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            Alignment = BoxContainer.AlignmentMode.Center
+        };
+        texts.AddThemeConstantOverride("separation", 2);
+
+        Label name = new Label
+        {
+            Text = info.FileName,
+            AutowrapMode = TextServer.AutowrapMode.Arbitrary,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        name.AddThemeFontSizeOverride("font_size", 21);
+
+        Label meta = new Label
+        {
+            Text = ImportService.Describe(info),
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        meta.AddThemeFontSizeOverride("font_size", 15);
+        meta.AddThemeColorOverride("font_color", new Color(0.72f, 0.76f, 0.85f));
+
+        texts.AddChild(name);
+        texts.AddChild(meta);
+        row.AddChild(texts);
+
+        Button normal = new Button
+        {
+            Text = "导入",
+            CustomMinimumSize = new Vector2(96f, 48f),
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter
+        };
         normal.Pressed += () => DoImport(host, info, skipIntegrityCheck: false);
 
-        Button force = new Button { Text = "强制导入", CustomMinimumSize = new Vector2(112f, 44f) };
+        Button force = new Button
+        {
+            Text = "强制导入",
+            CustomMinimumSize = new Vector2(124f, 48f),
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter
+        };
         force.Pressed += () => DoImport(host, info, skipIntegrityCheck: true);
 
-        box.AddChild(normal);
-        box.AddChild(force);
-        return box;
+        row.AddChild(normal);
+        row.AddChild(force);
+        return row;
     }
 
     /// <summary>
