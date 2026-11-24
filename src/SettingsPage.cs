@@ -25,7 +25,8 @@ internal static class SettingsPage
             .WithDescription(T("导出/导入存档备份。命令在模组配置界面执行，导入后需要重启游戏。"))
             .AddSection("export", section =>
             {
-                section.AddHeader("export.header", T("导出 Export"), T("把存档打包成 zip"));
+                section.WithTitle(T("导出存档 Export"));
+                section.WithDescription(T("把存档打包成 zip 并保存到备份目录"));
                 section.AddButton(
                     "export.full",
                     T("导出全部存档"),
@@ -43,7 +44,8 @@ internal static class SettingsPage
             })
             .AddSection("import", section =>
             {
-                section.AddHeader("import.header", T("导入 Import"), T("导入前会自动备份当前存档；请先退到主菜单，导入后重启游戏生效。"));
+                section.WithTitle(T("导入存档 Import"));
+                section.WithDescription(T("导入前会自动备份当前存档；请先退到主菜单，导入后重启游戏生效。"));
                 List<ArchiveInfo> archives = ImportService.ListArchives();
                 if (archives.Count == 0)
                 {
@@ -77,7 +79,8 @@ internal static class SettingsPage
             })
             .AddSection("status", section =>
             {
-                section.AddParagraph("status.text", T("状态"), ModSettingsText.Dynamic(() => _status), null);
+                section.WithTitle(T("状态 Status"));
+                section.AddParagraph("status.text", T("最近一次操作"), ModSettingsText.Dynamic(() => _status), null);
             });
     }
 

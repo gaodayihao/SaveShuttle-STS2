@@ -63,6 +63,24 @@ internal static class DebugHook
                         }
                         break;
                     }
+                case "page":
+                    {
+                        if (STS2RitsuLib.Settings.ModSettingsRegistry.TryGetPage("SaveShuttle", "main", out STS2RitsuLib.Settings.ModSettingsPage page))
+                        {
+                            ModLog.Info("[debug] page title=" + page.Title?.Resolve() + " sections=" + page.Sections.Count);
+                            foreach (STS2RitsuLib.Settings.ModSettingsSection section in page.Sections)
+                            {
+                                ModLog.Info("[debug]   section id=" + section.Id
+                                            + " title=[" + (section.Title?.Resolve() ?? "") + "]"
+                                            + " entries=" + section.Entries.Count);
+                            }
+                        }
+                        else
+                        {
+                            ModLog.Warn("[debug] page not registered");
+                        }
+                        break;
+                    }
                 case "verify":
                     {
                         ArchiveInfo full = ImportService.ListArchives()
