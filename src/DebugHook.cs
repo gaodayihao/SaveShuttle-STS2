@@ -46,6 +46,17 @@ internal static class DebugHook
                 case "export":
                     BackupService.Export(BackupService.KindFull, progressOnly: false);
                     break;
+                case "toast":
+                    Toast.Show("存档穿梭测试：这是一条提示 / toast test", false);
+                    break;
+                case "toast-delayed":
+                    {
+                        SceneTree tree = (SceneTree)Engine.GetMainLoop();
+                        SceneTreeTimer timer = tree.CreateTimer(20.0);
+                        timer.Timeout += () => Toast.Show("延迟提示：导出成功 → StS2_full_test.zip（79 个文件）", false);
+                        ModLog.Info("[debug] toast scheduled in 20s");
+                        break;
+                    }
                 case "export2":
                     {
                         ExportResult first = BackupService.Export(BackupService.KindFull, progressOnly: false);

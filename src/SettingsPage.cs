@@ -9,8 +9,27 @@ internal static class SettingsPage
     private const string ModId = "SaveShuttle";
     private const string PageId = "main";
     private static string _status = "";
+    private static readonly IModSettingsValueBinding<string> _statusBinding =
+        ModSettingsBindings.InMemory<string>(ModId, "last_action", "");
 
     private static ModSettingsText T(string text) => ModSettingsText.Literal(text);
+
+    private static ModSettingsText StatusText() =>
+        ModSettingsText.Dynamic(() => _status, new IModSettingsBinding[] { _statusBinding });
+
+    private static void Publish(string message, bool error = false)
+    {
+        _status = message;
+        try
+        {
+            _statusBinding.Write(message);
+        }
+        catch (Exception)
+        {
+            // status text is cosmetic; never let it break the action
+        }
+        Toast.Show(message, error);
+    }
 
     public static void Register()
     {
@@ -41,7 +60,7 @@ internal static class SettingsPage
                     host => Export(host, BackupService.KindProgress, progressOnly: true),
                     ModSettingsButtonTone.Normal,
                     T("只包含进度和当前局，不含设置。Only run/progress data."));
-                section.AddParagraph("export.status", T("最近一次操作"), ModSettingsText.Dynamic(() => _status), null);
+                section.AddParagraph("export.status", T("最近一次操作"), StatusText(), null);
             })
             .AddSection("import", section =>
             {
@@ -116,8 +135,7 @@ internal static class SettingsPage
                     T("清理"),
                     host =>
                     {
-                        _status = ImportService.PruneOld(keepFull: 10, keepPreImport: 5);
-                        ModLog.Info(_status);
+                        Publish(ImportService.PruneOld(keepFull: 10, keepPreImport: 5));
                         Refresh(host);
                     },
                     ModSettingsButtonTone.Danger,
@@ -126,7 +144,7 @@ internal static class SettingsPage
             .AddSection("status", section =>
             {
                 section.WithTitle(T("状态 Status"));
-                section.AddParagraph("status.text", T("最近一次操作"), ModSettingsText.Dynamic(() => _status), null);
+                section.AddParagraph("status.text", T("最近一次操作"), StatusText(), null);
             });
     }
 
@@ -135,17 +153,16 @@ internal static class SettingsPage
         ExportResult result = BackupService.Export(kind, progressOnly);
         if (!result.Success)
         {
-            _status = "导出失败：" + result.Error;
+            Publish("导出失败：" + result.Error, error: true);
         }
         else if (result.Reused)
         {
-            _status = "内容与几秒前的备份相同，直接沿用：" + Path.GetFileName(result.ArchivePath);
+            Publish("内容与几秒前的备份相同，直接沿用：" + Path.GetFileName(result.ArchivePath));
         }
         else
         {
-            _status = "已导出 " + result.FileCount + " 个文件 → " + Path.GetFileName(result.ArchivePath);
+            Publish("已导出 " + result.FileCount + " 个文件 → " + Path.GetFileName(result.ArchivePath));
         }
-        ModLog.Info(_status);
         Refresh(host);
     }
 
@@ -154,14 +171,13 @@ internal static class SettingsPage
         ImportResult result = ImportService.Import(path, skipIntegrityCheck);
         if (!result.Success)
         {
-            _status = (skipIntegrityCheck ? "强制导入失败：" : "导入失败：") + result.Error;
+            Publish((skipIntegrityCheck ? "强制导入失败：" : "导入失败：") + result.Error, error: true);
         }
         else
         {
-            _status = "已从 " + name + " 恢复 " + result.FileCount + " 个文件；请重启游戏生效。旧存档备份："
-                      + (result.PreviousBackupPath == null ? "-" : Path.GetFileName(result.PreviousBackupPath));
+            Publish("已从 " + name + " 恢复 " + result.FileCount + " 个文件；请重启游戏生效。旧存档备份："
+                    + (result.PreviousBackupPath == null ? "-" : Path.GetFileName(result.PreviousBackupPath)));
         }
-        ModLog.Info(_status);
         Refresh(host);
     }
 
