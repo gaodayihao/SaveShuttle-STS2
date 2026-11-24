@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Godot;
 using STS2RitsuLib.Settings;
 
 namespace SaveShuttle;
@@ -12,7 +13,42 @@ internal static class SettingsPage
     private static readonly IModSettingsValueBinding<string> _statusBinding =
         ModSettingsBindings.InMemory<string>(ModId, "last_action", "");
 
+    private const int ArchiveSlots = 6;
+
+    /// <summary>Bumped after every export/import so the archive rows re-resolve.</summary>
+    private static readonly IModSettingsValueBinding<int> _listRevision =
+        ModSettingsBindings.InMemory<int>(ModId, "list_revision", 0);
+
+    private static List<ArchiveInfo> _archives = ImportService.ListArchives();
+
     private static ModSettingsText T(string text) => ModSettingsText.Literal(text);
+
+    private static ArchiveInfo Slot(int index) =>
+        index >= 0 && index < _archives.Count ? _archives[index] : null;
+
+    private static void ReloadArchives()
+    {
+        _archives = ImportService.ListArchives();
+        try
+        {
+            _listRevision.Write(_listRevision.Read() + 1);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private static ModSettingsText SlotName(int index) =>
+        ModSettingsText.Dynamic(() => Slot(index)?.FileName ?? "（空 Empty）", new IModSettingsBinding[] { _listRevision });
+
+    private static ModSettingsText SlotInfo(int index) =>
+        ModSettingsText.Dynamic(
+            () =>
+            {
+                ArchiveInfo info = Slot(index);
+                return info == null ? "—" : ImportService.Describe(info);
+            },
+            new IModSettingsBinding[] { _listRevision });
 
     private static ModSettingsText StatusText() =>
         ModSettingsText.Dynamic(() => _status, new IModSettingsBinding[] { _statusBinding });
@@ -66,63 +102,50 @@ internal static class SettingsPage
             {
                 section.WithTitle(T("导入存档 Import"));
                 section.WithDescription(T("导入前会校验归档完整性并自动备份当前存档；请先退到主菜单，导入后重启游戏生效。"));
-                List<ArchiveInfo> archives = ImportService.ListArchives();
-                if (archives.Count == 0)
+                for (int slot = 0; slot < ArchiveSlots; slot++)
                 {
-                    section.AddParagraph(
-                        "import.empty",
-                        T("还没有备份"),
-                        T("先在「导出」里创建一个，或把 zip 放进备份目录后重新打开本页。"),
-                        null);
-                }
-                else
-                {
-                    int index = 0;
-                    foreach (ArchiveInfo info in archives)
-                    {
-                        if (index >= 6)
+                    int index = slot;
+                    section.AddButton(
+                        "import." + index,
+                        SlotName(index),
+                        T("导入"),
+                        host =>
                         {
-                            break;
-                        }
-                        string path = info.Path;
-                        string name = info.FileName;
-                        section.AddButton(
-                            "import." + index,
-                            T(name),
-                            T("导入"),
-                            host => DoImport(host, path, name),
-                            ModSettingsButtonTone.Danger,
-                            T(ImportService.Describe(info)));
-                        index++;
-                    }
+                            ArchiveInfo info = Slot(index);
+                            if (info == null)
+                            {
+                                Publish("这个位置还没有备份", error: true);
+                                return;
+                            }
+                            DoImport(host, info.Path, info.FileName);
+                        },
+                        ModSettingsButtonTone.Danger,
+                        SlotInfo(index));
                 }
             })
             .AddSection("force", section =>
             {
                 section.WithTitle(T("强制导入（跳过校验）Force import"));
                 section.WithDescription(T("给手工改过的归档用：不比对 sha256，直接覆盖。导入前仍会自动备份。"));
-                List<ArchiveInfo> forceList = ImportService.ListArchives();
-                int forceIndex = 0;
-                foreach (ArchiveInfo info in forceList)
+                for (int slot = 0; slot < ArchiveSlots; slot++)
                 {
-                    if (forceIndex >= 6)
-                    {
-                        break;
-                    }
-                    string path = info.Path;
-                    string name = info.FileName;
+                    int index = slot;
                     section.AddButton(
-                        "force." + forceIndex,
-                        T(name),
+                        "force." + index,
+                        SlotName(index),
                         T("强制导入"),
-                        host => DoImport(host, path, name, skipIntegrityCheck: true),
+                        host =>
+                        {
+                            ArchiveInfo info = Slot(index);
+                            if (info == null)
+                            {
+                                Publish("这个位置还没有备份", error: true);
+                                return;
+                            }
+                            DoImport(host, info.Path, info.FileName, skipIntegrityCheck: true);
+                        },
                         ModSettingsButtonTone.Danger,
-                        T(ImportService.Describe(info)));
-                    forceIndex++;
-                }
-                if (forceList.Count == 0)
-                {
-                    section.AddParagraph("force.empty", T("还没有备份"), T("先导出一个再回来。"), null);
+                        SlotInfo(index));
                 }
             })
             .AddSection("maintenance", section =>
@@ -181,13 +204,57 @@ internal static class SettingsPage
         Refresh(host);
     }
 
+    private static void ScheduleRebuild(IModSettingsUiActionHost host)
+    {
+        try
+        {
+            if (Engine.GetMainLoop() is not SceneTree tree)
+            {
+                return;
+            }
+
+            SceneTreeTimer timer = tree.CreateTimer(0.2);
+            timer.Timeout += () =>
+            {
+                try
+                {
+                    // ModSettingsUiContext is internal, so the navigation entry point is
+                    // reached through reflection; failing to find it is not fatal.
+                    System.Reflection.MethodInfo navigate = host?.GetType().GetMethod(
+                        "NavigateToPage",
+                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                    if (navigate != null && host != null)
+                    {
+                        navigate.Invoke(host, new object[] { PageId });
+                        ModLog.Info("page re-entered to rebuild the archive list");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ModLog.Warn("rebuild navigation failed: " + ex.GetType().Name + ": " + ex.Message);
+                }
+            };
+        }
+        catch (Exception)
+        {
+        }
+    }
+
     /// <summary>Rebuild the page so the status line and the archive list reflect what just happened.</summary>
     private static void Refresh(IModSettingsUiActionHost host)
     {
         try
         {
+            ReloadArchives();
+            host?.MarkDirty(_listRevision);
+            host?.MarkDirty(_statusBinding);
             host?.RequestRefreshAfterDataModelBatchChange();
             host?.RequestRefresh();
+
+            // Last resort: re-enter the page so RitsuLib rebuilds the entry list from
+            // scratch. Deferred, because doing this inside the button callback would
+            // tear down the control that is still handling the click.
+            ScheduleRebuild(host);
         }
         catch (Exception ex)
         {
