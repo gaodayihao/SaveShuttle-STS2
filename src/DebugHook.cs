@@ -171,6 +171,7 @@ internal static class DebugHook
                         ModLog.Info("[debug] archive " + info.FileName + " | " + ImportService.Describe(info));
                     }
                     break;
+                case "importforce":
                 case "import":
                     if (lines.Length > 1)
                     {
@@ -180,7 +181,7 @@ internal static class DebugHook
                             ?? ImportService.ListArchives().FirstOrDefault();
                         if (target != null)
                         {
-                            ImportResult result = ImportService.Import(target.Path);
+                            ImportResult result = ImportService.Import(target.Path, skipIntegrityCheck: command == "importforce");
                             ModLog.Info("[debug] import " + (result.Success ? "ok" : "failed: " + result.Error)
                                         + " files=" + result.FileCount + " backup=" + result.PreviousBackupPath);
                         }

@@ -46,7 +46,7 @@ internal static class SettingsPage
             .AddSection("import", section =>
             {
                 section.WithTitle(T("导入存档 Import"));
-                section.WithDescription(T("导入前会自动备份当前存档；请先退到主菜单，导入后重启游戏生效。"));
+                section.WithDescription(T("导入前会校验归档完整性并自动备份当前存档；请先退到主菜单，导入后重启游戏生效。"));
                 List<ArchiveInfo> archives = ImportService.ListArchives();
                 if (archives.Count == 0)
                 {
@@ -76,6 +76,34 @@ internal static class SettingsPage
                             T(ImportService.Describe(info)));
                         index++;
                     }
+                }
+            })
+            .AddSection("force", section =>
+            {
+                section.WithTitle(T("强制导入（跳过校验）Force import"));
+                section.WithDescription(T("给手工改过的归档用：不比对 sha256，直接覆盖。导入前仍会自动备份。"));
+                List<ArchiveInfo> forceList = ImportService.ListArchives();
+                int forceIndex = 0;
+                foreach (ArchiveInfo info in forceList)
+                {
+                    if (forceIndex >= 6)
+                    {
+                        break;
+                    }
+                    string path = info.Path;
+                    string name = info.FileName;
+                    section.AddButton(
+                        "force." + forceIndex,
+                        T(name),
+                        T("强制导入"),
+                        host => DoImport(host, path, name, skipIntegrityCheck: true),
+                        ModSettingsButtonTone.Danger,
+                        T(ImportService.Describe(info)));
+                    forceIndex++;
+                }
+                if (forceList.Count == 0)
+                {
+                    section.AddParagraph("force.empty", T("还没有备份"), T("先导出一个再回来。"), null);
                 }
             })
             .AddSection("maintenance", section =>
@@ -121,12 +149,12 @@ internal static class SettingsPage
         Refresh(host);
     }
 
-    private static void DoImport(IModSettingsUiActionHost host, string path, string name)
+    private static void DoImport(IModSettingsUiActionHost host, string path, string name, bool skipIntegrityCheck = false)
     {
-        ImportResult result = ImportService.Import(path);
+        ImportResult result = ImportService.Import(path, skipIntegrityCheck);
         if (!result.Success)
         {
-            _status = "导入失败：" + result.Error;
+            _status = (skipIntegrityCheck ? "强制导入失败：" : "导入失败：") + result.Error;
         }
         else
         {

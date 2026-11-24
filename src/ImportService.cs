@@ -24,6 +24,7 @@ internal sealed class ImportResult
     public string RestoredPath;
     public string PreviousBackupPath;
     public string Error;
+    public int MismatchedCount;
     public List<string> Warnings = new List<string>();
 }
 
@@ -121,7 +122,7 @@ internal static class ImportService
         return "已删除 " + removed + " 个旧备份，释放 " + (freed / 1024) + " KB";
     }
 
-    public static ImportResult Import(string archivePath)
+    public static ImportResult Import(string archivePath, bool skipIntegrityCheck = false)
     {
         var result = new ImportResult();
         try
@@ -136,6 +137,14 @@ internal static class ImportService
             List<(ZipArchiveEntry Entry, string Target)> plan = new List<(ZipArchiveEntry, string)>();
             using (ZipArchive zip = ZipFile.OpenRead(archivePath))
             {
+                SaveArchiveManifest manifest = null;
+                ZipArchiveEntry manifestEntry = zip.GetEntry("manifest.json");
+                if (manifestEntry != null)
+                {
+                    using StreamReader manifestReader = new StreamReader(manifestEntry.Open());
+                    manifest = SaveArchiveManifest.FromJson(manifestReader.ReadToEnd());
+                }
+
                 foreach (ZipArchiveEntry entry in zip.Entries)
                 {
                     if (entry.FullName.EndsWith("/", StringComparison.Ordinal))
@@ -170,6 +179,45 @@ internal static class ImportService
                     return result;
                 }
 
+                // Read every entry once so the archive can be integrity-checked before
+                // anything on disk is touched.
+                var payloads = new List<(byte[] Data, string Target, string Name)>();
+                foreach ((ZipArchiveEntry entry, string target) in plan)
+                {
+                    using Stream input = entry.Open();
+                    using MemoryStream buffer = new MemoryStream();
+                    input.CopyTo(buffer);
+                    payloads.Add((buffer.ToArray(), target, entry.FullName));
+                }
+
+                if (!skipIntegrityCheck && manifest != null)
+                {
+                    var expected = manifest.Files
+                        .GroupBy(f => f.Path, StringComparer.Ordinal)
+                        .ToDictionary(g => g.Key, g => g.First().Sha256, StringComparer.Ordinal);
+                    List<string> mismatched = new List<string>();
+                    foreach ((byte[] data, string _, string name) in payloads)
+                    {
+                        if (!expected.TryGetValue(name, out string sha)) continue;
+                        string actual = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(data));
+                        if (!string.Equals(actual, sha, StringComparison.OrdinalIgnoreCase))
+                        {
+                            mismatched.Add(name);
+                        }
+                    }
+
+                    if (mismatched.Count > 0)
+                    {
+                        result.Error = "有 " + mismatched.Count + " 个文件与清单里的 sha256 不一致（"
+                                       + string.Join(", ", mismatched.Take(3))
+                                       + (mismatched.Count > 3 ? " …" : "")
+                                       + "）。如确认是自己改的，请用「强制导入」。";
+                        result.MismatchedCount = mismatched.Count;
+                        ModLog.Warn("integrity check failed for " + archivePath + ": " + result.Error);
+                        return result;
+                    }
+                }
+
                 ExportResult backup = BackupService.Export(BackupService.KindPreImport, progressOnly: false);
                 if (!backup.Success)
                 {
@@ -178,12 +226,10 @@ internal static class ImportService
                 }
                 result.PreviousBackupPath = backup.ArchivePath;
 
-                foreach ((ZipArchiveEntry entry, string target) in plan)
+                foreach ((byte[] data, string target, string _) in payloads)
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(target));
-                    using Stream input = entry.Open();
-                    using FileStream output = File.Create(target);
-                    input.CopyTo(output);
+                    File.WriteAllBytes(target, data);
                 }
                 result.FileCount = plan.Count;
             }
