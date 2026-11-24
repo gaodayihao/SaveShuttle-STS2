@@ -2,11 +2,16 @@
   "id": "SaveShuttle",
   "name": "存档穿梭 SaveShuttle",
   "author": "Ellis",
+  "description": "从 RitsuLib 模组配置界面导出/导入存档。Export and import save data from the RitsuLib mod settings screen.",
   "version": "0.1.0",
-  "description": "Export and import Slay the Spire 2 save data from the RitsuLib mod settings screen.",
+  "min_game_version": "0.113.0",
   "has_pck": false,
   "has_dll": true,
-  "dependencies": ["STS2-RitsuLib"],
-  "affects_gameplay": false,
-  "min_game_version": "0.113.0"
+  "dependencies": [
+    {
+      "id": "STS2-RitsuLib",
+      "min_version": "0.6.0"
+    }
+  ],
+  "affects_gameplay": false
 }
