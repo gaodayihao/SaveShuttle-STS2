@@ -46,6 +46,9 @@ internal static class DebugHook
                 case "export":
                     BackupService.Export(BackupService.KindFull, progressOnly: false);
                     break;
+                case "exportui":
+                    SettingsPage.DebugExportAll();
+                    break;
                 case "toast":
                     Toast.Show("存档穿梭测试：这是一条提示 / toast test", false);
                     break;
@@ -123,19 +126,20 @@ internal static class DebugHook
                     }
                 case "page":
                     {
-                        if (STS2RitsuLib.Settings.ModSettingsRegistry.TryGetPage("SaveShuttle", "main", out STS2RitsuLib.Settings.ModSettingsPage page))
+                        foreach (string id in new[] { "main", "import" })
                         {
-                            ModLog.Info("[debug] page title=" + page.Title?.Resolve() + " sections=" + page.Sections.Count);
+                            if (!STS2RitsuLib.Settings.ModSettingsRegistry.TryGetPage("SaveShuttle", id, out STS2RitsuLib.Settings.ModSettingsPage page))
+                            {
+                                ModLog.Warn("[debug] page '" + id + "' not registered");
+                                continue;
+                            }
+                            ModLog.Info("[debug] page " + id + " title=" + page.Title?.Resolve() + " sections=" + page.Sections.Count);
                             foreach (STS2RitsuLib.Settings.ModSettingsSection section in page.Sections)
                             {
-                                ModLog.Info("[debug]   section id=" + section.Id
+                                ModLog.Info("[debug]   section " + section.Id
                                             + " title=[" + (section.Title?.Resolve() ?? "") + "]"
                                             + " entries=" + section.Entries.Count);
                             }
-                        }
-                        else
-                        {
-                            ModLog.Warn("[debug] page not registered");
                         }
                         break;
                     }
