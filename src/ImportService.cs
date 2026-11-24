@@ -29,7 +29,7 @@ internal sealed class ImportResult
 
 internal static class ImportService
 {
-    private const string EntryPrefix = "saves/";
+    private static readonly string[] EntryPrefixes = { "saves/", "configs/" };
 
     public static List<ArchiveInfo> ListArchives()
     {
@@ -142,12 +142,13 @@ internal static class ImportService
                     {
                         continue;
                     }
-                    if (!entry.FullName.StartsWith(EntryPrefix, StringComparison.Ordinal))
+                    string prefix = Array.Find(EntryPrefixes, p => entry.FullName.StartsWith(p, StringComparison.Ordinal));
+                    if (prefix == null)
                     {
                         continue;
                     }
 
-                    string relative = entry.FullName.Substring(EntryPrefix.Length).Replace('\\', '/');
+                    string relative = entry.FullName.Substring(prefix.Length).Replace('\\', '/');
                     if (relative.Length == 0 || relative.Contains("..", StringComparison.Ordinal) || relative.StartsWith("/", StringComparison.Ordinal) || relative.Contains(":", StringComparison.Ordinal))
                     {
                         result.Error = "归档包含非法路径 / unsafe entry: " + entry.FullName;

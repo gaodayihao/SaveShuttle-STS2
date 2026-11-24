@@ -74,6 +74,42 @@ internal static class DebugHook
                         }
                         break;
                     }
+                case "lsuser":
+                    {
+                        string root = PlatformPaths.UserRoot();
+                        ModLog.Info("[debug] user root: " + root);
+                        foreach (string dir in Directory.GetDirectories(root))
+                        {
+                            string name = Path.GetFileName(dir);
+                            int files = 0;
+                            long size = 0;
+                            try
+                            {
+                                foreach (string f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+                                {
+                                    files++;
+                                    size += new FileInfo(f).Length;
+                                }
+                            }
+                            catch (Exception)
+                            {
+                            }
+                            ModLog.Info("[debug]   dir " + name + "  files=" + files + "  " + (size / 1024) + " KB");
+                        }
+                        foreach (string f in Directory.GetFiles(root))
+                        {
+                            ModLog.Info("[debug]   file " + Path.GetFileName(f) + "  " + (new FileInfo(f).Length / 1024) + " KB");
+                        }
+                        string mods = Path.Combine(root, "mods");
+                        if (Directory.Exists(mods))
+                        {
+                            foreach (string f in Directory.EnumerateFiles(mods, "*", SearchOption.AllDirectories))
+                            {
+                                ModLog.Info("[debug]   mods/ " + Path.GetRelativePath(root, f) + "  " + new FileInfo(f).Length + " B");
+                            }
+                        }
+                        break;
+                    }
                 case "page":
                     {
                         if (STS2RitsuLib.Settings.ModSettingsRegistry.TryGetPage("SaveShuttle", "main", out STS2RitsuLib.Settings.ModSettingsPage page))
@@ -105,7 +141,9 @@ internal static class DebugHook
                         int bad = 0;
                         foreach (ManifestFile f in full.Manifest.Files)
                         {
-                            string rel = f.Path.StartsWith("saves/", StringComparison.Ordinal) ? f.Path.Substring(6) : f.Path;
+                            string rel = f.Path.StartsWith("saves/", StringComparison.Ordinal) ? f.Path.Substring(6)
+                                       : f.Path.StartsWith("configs/", StringComparison.Ordinal) ? f.Path.Substring(8)
+                                       : f.Path;
                             string disk = Path.Combine(PlatformPaths.UserRoot(), rel);
                             if (!File.Exists(disk))
                             {

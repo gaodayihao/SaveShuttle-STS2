@@ -73,10 +73,12 @@ internal static class BackupService
             int count = 0;
             using (ZipArchive zip = ZipFile.Open(zipPath, ZipArchiveMode.Create))
             {
-                foreach (string file in SaveTree.EnumerateFiles(progressOnly))
+                foreach (string file in EnumerateFiles(progressOnly))
                 {
-                    string rel = SaveTree.Relative(file);
-                    string entryName = "saves/" + rel;
+                    string rel = file.StartsWith(SaveTree.RootPath, StringComparison.Ordinal)
+                        ? "saves/" + SaveTree.Relative(file)
+                        : "configs/" + ConfigTree.Relative(file);
+                    string entryName = rel;
                     using (Stream input = File.OpenRead(file))
                     {
                         ZipArchiveEntry entry = zip.CreateEntry(entryName, CompressionLevel.Optimal);
@@ -124,10 +126,27 @@ internal static class BackupService
         }
     }
 
+    /// <summary>Save files plus per-mod configuration (the latter only on full exports).</summary>
+    private static IEnumerable<string> EnumerateFiles(bool progressOnly)
+    {
+        foreach (string file in SaveTree.EnumerateFiles(progressOnly))
+        {
+            yield return file;
+        }
+        if (progressOnly)
+        {
+            yield break;
+        }
+        foreach (string file in ConfigTree.EnumerateFiles())
+        {
+            yield return file;
+        }
+    }
+
     private static string Signature(bool progressOnly)
     {
         var builder = new System.Text.StringBuilder();
-        foreach (string file in SaveTree.EnumerateFiles(progressOnly))
+        foreach (string file in EnumerateFiles(progressOnly))
         {
             try
             {
