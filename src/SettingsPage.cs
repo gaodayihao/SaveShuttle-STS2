@@ -101,51 +101,18 @@ internal static class SettingsPage
             .AddSection("import", section =>
             {
                 section.WithTitle(T("导入存档 Import"));
-                section.WithDescription(T("导入前会校验归档完整性并自动备份当前存档；请先退到主菜单，导入后重启游戏生效。"));
-                for (int slot = 0; slot < ArchiveSlots; slot++)
+                section.WithDescription(T("「导入」会先校验归档完整性；「强制导入」跳过校验，用于手工改过的归档。两者都会先备份当前存档，导入后需重启游戏。"));
+                ReloadArchives();
+                int rows = Math.Min(_archives.Count, ArchiveSlots * 2);
+                for (int slot = 0; slot < rows; slot++)
                 {
                     int index = slot;
-                    section.AddButton(
+                    section.AddCustom(
                         "import." + index,
                         SlotName(index),
-                        T("导入"),
-                        host =>
-                        {
-                            ArchiveInfo info = Slot(index);
-                            if (info == null)
-                            {
-                                Publish("这个位置还没有备份", error: true);
-                                return;
-                            }
-                            DoImport(host, info.Path, info.FileName);
-                        },
-                        ModSettingsButtonTone.Danger,
-                        SlotInfo(index));
-                }
-            })
-            .AddSection("force", section =>
-            {
-                section.WithTitle(T("强制导入（跳过校验）Force import"));
-                section.WithDescription(T("给手工改过的归档用：不比对 sha256，直接覆盖。导入前仍会自动备份。"));
-                for (int slot = 0; slot < ArchiveSlots; slot++)
-                {
-                    int index = slot;
-                    section.AddButton(
-                        "force." + index,
-                        SlotName(index),
-                        T("强制导入"),
-                        host =>
-                        {
-                            ArchiveInfo info = Slot(index);
-                            if (info == null)
-                            {
-                                Publish("这个位置还没有备份", error: true);
-                                return;
-                            }
-                            DoImport(host, info.Path, info.FileName, skipIntegrityCheck: true);
-                        },
-                        ModSettingsButtonTone.Danger,
-                        SlotInfo(index));
+                        host => ArchiveRow(host, index),
+                        SlotInfo(index),
+                        () => Slot(index) != null);
                 }
             })
             .AddSection("maintenance", section =>
@@ -202,6 +169,41 @@ internal static class SettingsPage
                     + (result.PreviousBackupPath == null ? "-" : Path.GetFileName(result.PreviousBackupPath)));
         }
         Refresh(host);
+    }
+
+    /// <summary>One archive row: the name on the left, both import buttons on the right.</summary>
+    private static Control ArchiveRow(IModSettingsUiActionHost host, int index)
+    {
+        HBoxContainer box = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+        box.AddThemeConstantOverride("separation", 10);
+
+        Button normal = new Button { Text = "导入", CustomMinimumSize = new Vector2(96f, 44f) };
+        normal.Pressed += () =>
+        {
+            ArchiveInfo info = Slot(index);
+            if (info == null)
+            {
+                Publish("这个位置还没有备份", error: true);
+                return;
+            }
+            DoImport(host, info.Path, info.FileName);
+        };
+
+        Button force = new Button { Text = "强制导入", CustomMinimumSize = new Vector2(120f, 44f) };
+        force.Pressed += () =>
+        {
+            ArchiveInfo info = Slot(index);
+            if (info == null)
+            {
+                Publish("这个位置还没有备份", error: true);
+                return;
+            }
+            DoImport(host, info.Path, info.FileName, skipIntegrityCheck: true);
+        };
+
+        box.AddChild(normal);
+        box.AddChild(force);
+        return box;
     }
 
     private static void ScheduleRebuild(IModSettingsUiActionHost host)
