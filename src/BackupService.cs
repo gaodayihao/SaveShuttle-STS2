@@ -17,6 +17,7 @@ internal sealed class ExportResult
     public int FileCount;
     public long Bytes;
     public string Error;
+    public bool Reused;
 }
 
 internal static class BackupService
@@ -24,6 +25,10 @@ internal static class BackupService
     public const string KindFull = "full";
     public const string KindProgress = "progress";
     public const string KindPreImport = "preimport";
+
+    private static string _lastSignature;
+    private static string _lastArchivePath;
+    private static DateTime _lastExportAt = DateTime.MinValue;
 
     public static ExportResult Export(string kind, bool progressOnly)
     {
@@ -33,6 +38,20 @@ internal static class BackupService
             if (!SaveTree.Exists)
             {
                 result.Error = "没有找到存档目录 / save directory not found";
+                return result;
+            }
+
+            string signature = Signature(progressOnly);
+            if (signature == _lastSignature
+                && _lastArchivePath != null
+                && kind != KindPreImport
+                && (DateTime.UtcNow - _lastExportAt).TotalSeconds < 5.0
+                && File.Exists(_lastArchivePath))
+            {
+                result.Success = true;
+                result.Reused = true;
+                result.ArchivePath = _lastArchivePath;
+                ModLog.Info("export skipped: content unchanged since the previous export a moment ago");
                 return result;
             }
 
@@ -88,6 +107,12 @@ internal static class BackupService
             result.ArchivePath = zipPath;
             result.FileCount = count;
             result.Bytes = bytes;
+            if (kind != KindPreImport)
+            {
+                _lastSignature = signature;
+                _lastArchivePath = zipPath;
+                _lastExportAt = DateTime.UtcNow;
+            }
             ModLog.Info("exported " + count + " file(s), " + bytes + " bytes -> " + zipPath);
             return result;
         }
@@ -97,6 +122,22 @@ internal static class BackupService
             ModLog.Error("export failed: " + result.Error);
             return result;
         }
+    }
+
+    private static string Signature(bool progressOnly)
+    {
+        var builder = new System.Text.StringBuilder();
+        foreach (string file in SaveTree.EnumerateFiles(progressOnly))
+        {
+            try
+            {
+                builder.Append(SaveTree.Relative(file)).Append(':').Append(new FileInfo(file).Length).Append(';');
+            }
+            catch (IOException)
+            {
+            }
+        }
+        return builder.ToString();
     }
 
     private static string SafeGameVersion()

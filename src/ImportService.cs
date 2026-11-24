@@ -93,6 +93,34 @@ internal static class ImportService
         return info.CreatedAt + "  ·  " + info.Kind + "  ·  " + info.GameVersion + "  ·  " + size;
     }
 
+    /// <summary>
+    /// Deletes older archives, keeping the newest <paramref name="keepFull"/> full/progress
+    /// archives and the newest <paramref name="keepPreImport"/> pre-import safety copies.
+    /// </summary>
+    public static string PruneOld(int keepFull, int keepPreImport)
+    {
+        List<ArchiveInfo> all = ListArchives();
+        var preImport = all.Where(a => a.Kind == BackupService.KindPreImport).ToList();
+        var normal = all.Where(a => a.Kind != BackupService.KindPreImport).ToList();
+        int removed = 0;
+        long freed = 0;
+        foreach (ArchiveInfo victim in normal.Skip(keepFull).Concat(preImport.Skip(keepPreImport)))
+        {
+            try
+            {
+                long size = new FileInfo(victim.Path).Length;
+                File.Delete(victim.Path);
+                removed++;
+                freed += size;
+            }
+            catch (Exception ex)
+            {
+                ModLog.Warn("cannot delete " + victim.FileName + ": " + ex.GetType().Name);
+            }
+        }
+        return "已删除 " + removed + " 个旧备份，释放 " + (freed / 1024) + " KB";
+    }
+
     public static ImportResult Import(string archivePath)
     {
         var result = new ImportResult();

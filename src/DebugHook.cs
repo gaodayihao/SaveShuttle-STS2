@@ -46,6 +46,17 @@ internal static class DebugHook
                 case "export":
                     BackupService.Export(BackupService.KindFull, progressOnly: false);
                     break;
+                case "export2":
+                    {
+                        ExportResult first = BackupService.Export(BackupService.KindFull, progressOnly: false);
+                        ExportResult second = BackupService.Export(BackupService.KindFull, progressOnly: false);
+                        ModLog.Info("[debug] export2 first=" + (first.Success ? "ok" : first.Error) + " reused=" + first.Reused
+                                    + " | second=" + (second.Success ? "ok" : second.Error) + " reused=" + second.Reused);
+                        break;
+                    }
+                case "prune":
+                    ModLog.Info("[debug] " + ImportService.PruneOld(10, 5));
+                    break;
                 case "export-progress":
                     BackupService.Export(BackupService.KindProgress, progressOnly: true);
                     break;

@@ -31,16 +31,17 @@ internal static class SettingsPage
                     "export.full",
                     T("导出全部存档"),
                     T("导出"),
-                    () => Export(BackupService.KindFull, progressOnly: false),
+                    host => Export(host, BackupService.KindFull, progressOnly: false),
                     ModSettingsButtonTone.Accent,
                     T("包含原版与 modded 两套进度、设置。Export every profile."));
                 section.AddButton(
                     "export.progress",
                     T("仅导出进度"),
                     T("导出"),
-                    () => Export(BackupService.KindProgress, progressOnly: true),
+                    host => Export(host, BackupService.KindProgress, progressOnly: true),
                     ModSettingsButtonTone.Normal,
                     T("只包含进度和当前局，不含设置。Only run/progress data."));
+                section.AddParagraph("export.status", T("最近一次操作"), ModSettingsText.Dynamic(() => _status), null);
             })
             .AddSection("import", section =>
             {
@@ -70,12 +71,29 @@ internal static class SettingsPage
                             "import." + index,
                             T(name),
                             T("导入"),
-                            () => DoImport(path, name),
+                            host => DoImport(host, path, name),
                             ModSettingsButtonTone.Danger,
                             T(ImportService.Describe(info)));
                         index++;
                     }
                 }
+            })
+            .AddSection("maintenance", section =>
+            {
+                section.WithTitle(T("维护 Maintenance"));
+                section.WithDescription(T("清理旧备份：保留最近 10 个正常备份和 5 个导入前快照。"));
+                section.AddButton(
+                    "maintenance.prune",
+                    T("清理旧备份"),
+                    T("清理"),
+                    host =>
+                    {
+                        _status = ImportService.PruneOld(keepFull: 10, keepPreImport: 5);
+                        ModLog.Info(_status);
+                        Refresh(host);
+                    },
+                    ModSettingsButtonTone.Danger,
+                    T("删除更早的归档，释放空间。Deletes older archives."));
             })
             .AddSection("status", section =>
             {
@@ -84,16 +102,26 @@ internal static class SettingsPage
             });
     }
 
-    private static void Export(string kind, bool progressOnly)
+    private static void Export(IModSettingsUiActionHost host, string kind, bool progressOnly)
     {
         ExportResult result = BackupService.Export(kind, progressOnly);
-        _status = result.Success
-            ? "已导出 " + result.FileCount + " 个文件 → " + result.ArchivePath
-            : "导出失败：" + result.Error;
+        if (!result.Success)
+        {
+            _status = "导出失败：" + result.Error;
+        }
+        else if (result.Reused)
+        {
+            _status = "内容与几秒前的备份相同，直接沿用：" + Path.GetFileName(result.ArchivePath);
+        }
+        else
+        {
+            _status = "已导出 " + result.FileCount + " 个文件 → " + Path.GetFileName(result.ArchivePath);
+        }
         ModLog.Info(_status);
+        Refresh(host);
     }
 
-    private static void DoImport(string path, string name)
+    private static void DoImport(IModSettingsUiActionHost host, string path, string name)
     {
         ImportResult result = ImportService.Import(path);
         if (!result.Success)
@@ -103,9 +131,24 @@ internal static class SettingsPage
         else
         {
             _status = "已从 " + name + " 恢复 " + result.FileCount + " 个文件；请重启游戏生效。旧存档备份："
-                      + (result.PreviousBackupPath ?? "-");
+                      + (result.PreviousBackupPath == null ? "-" : Path.GetFileName(result.PreviousBackupPath));
         }
         ModLog.Info(_status);
+        Refresh(host);
+    }
+
+    /// <summary>Rebuild the page so the status line and the archive list reflect what just happened.</summary>
+    private static void Refresh(IModSettingsUiActionHost host)
+    {
+        try
+        {
+            host?.RequestRefreshAfterDataModelBatchChange();
+            host?.RequestRefresh();
+        }
+        catch (Exception ex)
+        {
+            ModLog.Warn("refresh failed: " + ex.GetType().Name + ": " + ex.Message);
+        }
     }
 
     public static string CurrentStatus => _status;
